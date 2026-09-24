@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="/gestione/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Gestione delle prenotazioni di Hio Oriental Bar.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="HIO Gestionale">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>HIO ORIENTAL Gestionale</title>
+  <link rel="manifest" href="manifest.json">
+
+  <style>
+    /* La striscia dell'aggiornamento.
+       Sta fuori da Flutter apposta: deve poter comparire anche quando quello
+       che gira è la versione vecchia, che di sé stessa non sa niente. */
+    #aggiornamento {
+      position: fixed;
+      left: 12px;
+      right: 12px;
+      bottom: 12px;
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #160E0A;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, .28);
+      font-family: Helvetica, Arial, sans-serif;
+      /* Sotto la tacca e la barra di casa su iPhone. */
+      margin-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    #aggiornamento[hidden] { display: none; }
+    #aggiornamento p {
+      margin: 0;
+      flex: 1;
+      color: #F5F0E7;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+    #aggiornamento button {
+      flex: none;
+      border: 0;
+      border-radius: 8px;
+      padding: 12px 18px;
+      background: #B9172A;
+      color: #fff;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      /* Bersaglio pieno: si tocca col dito, in piedi, di sera. */
+      min-height: 44px;
+    }
+    #aggiornamento .dopo {
+      flex: none;
+      border: 0;
+      background: none;
+      color: #A79E90;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 12px 6px;
+      min-height: 44px;
+    }
+  </style>
+</head>
+<body>
+  <div id="aggiornamento" hidden>
+    <p>C'è una versione nuova del gestionale.</p>
+    <button class="dopo" id="aggiornamento-dopo">Dopo</button>
+    <button id="aggiornamento-ora">Aggiorna</button>
+  </div>
+
+  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    }
+  </script>
+
+  <script>
+    // Dire che c'è una versione nuova, invece di lasciarla scoprire.
+    //
+    // Flutter scarica la versione nuova al primo caricamento e la attiva al
+    // secondo: chi ricarica una volta sola continua a usare quella vecchia
+    // credendo sia l'ultima. In sala non lo indovina nessuno, e ogni
+    // correzione pubblicata resta invisibile finché la pagina non viene
+    // riaperta due volte per caso.
+    //
+    // Non ci si può affidare all'evento `updatefound`: la pagina che gira è
+    // quella vecchia, presa dalla cache, e registra sempre lo stesso
+    // indirizzo del suo lavoratore — il browser non vede niente di nuovo da
+    // installare. Verificato dal vivo: server 3973123531, in uso 397776161,
+    // e nessun aggiornamento in coda.
+    //
+    // Quindi si chiede al server, saltando ogni cache, qual è il numero di
+    // versione buono e lo si confronta con quello in uso.
+    (function () {
+      if (!("serviceWorker" in navigator)) return;
+
+      var barra = document.getElementById("aggiornamento");
+      var ora = document.getElementById("aggiornamento-ora");
+      var dopo = document.getElementById("aggiornamento-dopo");
+
+      function versioneInUso(reg) {
+        var m = reg && reg.active
+          ? reg.active.scriptURL.match(/[?&]v=(\d+)/)
+          : null;
+        return m ? m[1] : null;
+      }
+
+      function versioneSulServer() {
+        return fetch("flutter_bootstrap.js", { cache: "no-store" })
+          .then(function (r) { return r.text(); })
+          .then(function (testo) {
+            var m = testo.match(/serviceWorkerVersion\s*:\s*"(\d+)"/);
+            return m ? m[1] : null;
+          })
+          .catch(function () { return null; });
+      }
+
+      function controlla() {
+        if (!barra.hidden) return;
+        navigator.serviceWorker.getRegistration().then(function (reg) {
+          var inUso = versioneInUso(reg);
+          // Subito dopo un caricamento il lavoratore puo' essere ancora in
+          // avvio: non c'e' niente da confrontare, si riprovera'.
+          if (!inUso) return;
+          versioneSulServer().then(function (server) {
+            if (server && server !== inUso) barra.hidden = false;
+          });
+        }).catch(function () { /* si riprovera' */ });
+      }
+
+      // I due pulsanti. Erano spariti riscrivendo il controllo il 12/09:
+      // la striscia compariva ma premere non faceva nulla.
+      ora.addEventListener("click", function () {
+        ora.textContent = "Aggiorno…";
+        // Si toglie di mezzo il lavoratore vecchio e si ricarica con un
+        // indirizzo diverso: così anche la pagina e i file arrivano dal
+        // server invece che dalla cache del browser.
+        navigator.serviceWorker.getRegistration()
+          .then(function (reg) { return reg ? reg.unregister() : null; })
+          .catch(function () { /* si ricarica lo stesso */ })
+          .then(function () {
+            location.replace(
+              location.pathname + "?agg=" + Date.now() + location.hash);
+          });
+      });
+
+      dopo.addEventListener("click", function () { barra.hidden = true; });
+
+      // Si continua a guardare finché non si trova qualcosa.
+      //
+      // Prima i tentativi si fermavano al primo confronto **riuscito**, non
+      // alla prima differenza: pubblicando mentre la pagina si apriva, il
+      // primo confronto diceva "uguali" e poi si aspettava un quarto d'ora.
+      // Visto due volte di fila provandolo. Il controllo costa una richiesta
+      // di otto kilobyte: non c'è ragione di risparmiarci sopra.
+      [3000, 10000, 30000, 60000].forEach(function (quando) {
+        setTimeout(controlla, quando);
+      });
+      setInterval(controlla, 5 * 60 * 1000);
+    })();
+  </script>
+</body>
+</html>
